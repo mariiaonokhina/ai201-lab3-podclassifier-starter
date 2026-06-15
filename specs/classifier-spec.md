@@ -65,9 +65,9 @@ label was applied — title and description are both useful; other fields
 **Example block sketch (write one concrete example):**
 
 ```
-Title: {title}
-Description: {description}
-Label: {label}
+Title: "Three VCs on What the AI Boom Looks Like From the Inside"
+Description: We brought together three venture investors who have spent the past two years making bets in artificial intelligence — one at an early-stage firm focused on infrastructure, one at a growth-stage fund backing applications, and one who has become notably skeptical of the sector's near-term valuations. They talk about where the money is actually going, what founders are getting wrong, and whether the current moment feels more like 2000 or something genuinely different. They disagreed on almost everything."
+Label: "panel"
 ```
 
 ---
@@ -82,8 +82,7 @@ Title: {title}
 Description: {description}
 Label: ?
 
-Then add a line like: "Classify the episode above. Return your answer in
-the format below:" followed by the output format you chose.
+Then add a line like: "Classify the episode above. Return your answer in the format below:" followed by the output format you chose.
 ```
 
 ---
@@ -95,6 +94,18 @@ the format below:" followed by the output format you chose.
 makes parsing reliable? Think about: a single label on its own line?
 A structured format like "Label: X / Reasoning: Y"? JSON?
 What are the tradeoffs?]
+
+
+I think we should request the model to return exactly two lines:
+Label: <one of the four valid labels>
+Reasoning: <brief explanation>
+
+For example:
+Label: panel
+Reasoning: Multiple guests share the conversation and debate the topic.
+
+This format is easy to parse with simple string operations and it's more robust than free-form text and less brittle than JSON when the model may add extra commentary. If the LLM outputs something unexpected, you can still recover the label by looking for the `Label:` line.
+
 ```
 
 ---
@@ -104,6 +115,16 @@ What are the tradeoffs?]
 ```
 [blank — what if labeled_examples is empty? What if the description is very
 short? How does your prompt handle these?]
+
+
+If `labeled_examples` is empty, clearly state that there are no examples to
+learn from and ask the model to classify using only the episode title and
+description. This ensures the prompt still works even when the student has
+not labeled any training examples yet.
+
+If the description is very short, emphasize the definitions of the four valid
+labels and ask the model to use any available clues from the title, the
+description, and the task definitions. 
 ```
 
 ---
@@ -162,6 +183,15 @@ Extract the response text from:
 [blank — how do you extract the label and reasoning from the LLM's text output?
 What string operations or parsing logic do you need?
 This depends on the output format you chose in build_few_shot_prompt.]
+
+
+Split the response into lines and look for lines that start with `Label:` and
+`Reasoning:`. For example, use `strip()` on each line, then:
+  - if a line starts with `Label:`, extract the text after the colon and
+    normalize it with `strip().lower()` or exact case matching as needed
+  - if a line starts with `Reasoning:`, extract the remainder of that line
+
+If the response includes extra whitespace or the model adds other things, ignore any lines that do not start with one of those prefixes. If the label line is missing or the text after `Label:` is not one of `VALID_LABELS`, set `label` to `unknown` and still preserve whatever reasoning was returned.
 ```
 
 ---
@@ -171,6 +201,10 @@ This depends on the output format you chose in build_few_shot_prompt.]
 ```
 [blank — what do you do if the LLM returns a label that isn't in VALID_LABELS?
 What should label be set to?]
+
+
+In this case, set `label` to
+`unknown`. Do not crash or raise an exception just because the model returned an unexpected value; instead return `unknown` with any reasoning text you were able to extract.
 ```
 
 ---
@@ -181,6 +215,9 @@ What should label be set to?]
 [blank — what could go wrong? (Network error? Unparseable response?)
 What should the function return if something fails?
 Hint: the evaluation loop runs 20 calls — one bad response shouldn't crash everything.]
+
+
+The function should handle possible failures like network errors, API timeouts, invalid or malformed responses, and missing expected fields. If any of these errors occur, return a predefined reasoning value instead of raising an exception. For example, "Unable to classify episode due to an error or unexpected response."
 ```
 
 ---
@@ -213,24 +250,27 @@ any labels you're unsure about. Annotation quality is part of the lab.
 **Test: what does the raw LLM response look like for one episode?**
 
 ```
-Episode tested: [title]
-Raw response text: [paste it here]
+Episode tested: "The Year My Father Forgot My Name"
+Raw response text: 
+
+Label: narrative
+Reasoning: The episode is built from the host's personal notes about their father's experience with Alzheimer's, and it tells a story with a narrative arc, using the host's reflections and memories to convey what those three years were like.
 ```
 
 **How did you parse the label out of the response?**
 
 ```
-[describe the string operations — strip, split, lower, etc.]
+I split the raw LLM output into lines, trim each line, and look for one that starts with `Label:` and one that starts with `Reasoning:`. Then, extract the text after the colon, clean it up, and validate the label against `VALID_LABELS`, setting it to `unknown` if it doesn’t match.
 ```
 
 **Did any episodes return `"unknown"`? If so, why?**
 
 ```
-[yes / no — if yes, what did the raw response look like?]
+no
 ```
 
 **One thing about the output format that surprised you:**
 
 ```
-[your answer here]
+The thing that surprised me was how much more robust the simple two-line `Label:` / `Reasoning:` format proved to be. It’s easy to parse reliably, still lets the model provide a meaningful explanation, and avoids asking for strict JSON while being far safer than free-form text.
 ```
